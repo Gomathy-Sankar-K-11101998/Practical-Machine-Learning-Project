@@ -1,0 +1,138 @@
+---
+title: "Practical Machine Learning Project"
+author: "Sankar"
+date: "25/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+## Synopsis
+
+In this project, the data is collected from certain users who perform an excercise in five different ways in which 1 way is the proper way of performing the excercise. There are mainly two datasets one for training and the other for testing. The training dataset is used for training a model and use the trained model to find the method in which the user performed the excercise in the test dataset. The training data is splitted into 2 sets for performing cross-validation analysis. The training set is used to train the model and the validation set is then used for finding the accuracy of the model. The trained model is then used finally to find the type of excercise that is being performed by the person. It is also found that the accuracy of the model is more than 99% and also the classe variable of the test dataset is found perfectly.
+
+## Package and Datasets Loading
+
+The two sets that are required for this project are loaded into the program as the training and test datasets. All the packages that are required for performing this machine learning project are also loaded into the program. 
+
+```{r loading_datasets}
+
+library(caret)
+library(dplyr)
+library(parallel)
+library(doParallel)
+library(rattle)
+train_set = read.csv("pml-training.csv")
+test_set = read.csv("pml-testing.csv")
+
+```
+
+## Removal of unnecessary columns
+
+Since, most of the columns in the test dataset contains many 'NA' values the columns with more than a large number of NA values in the test dataset is found and as these columns does not affect the "classe" variable very much these columns are removed from both the training and test datatsets. 
+
+```{r removing_the_na_valued_columns_from_test_set}
+
+col_names_testna = colnames(test_set)[colSums(is.na(test_set)) > 15]
+new_test_set = select(test_set, -all_of(col_names_testna))
+new_train_set = select(train_set, -all_of(col_names_testna))
+
+```
+
+## Creation of Validation Dataset
+
+In order to find the accuracy of the trained model on the training dataset, the training set is divided into 2 sets for performing cross-validation analysis. One set is the training set for training the model and the other set is the validation set for performing cross-validation. 
+
+```{r creating_crossvalidation_dataset}
+
+row_numbers = createDataPartition(y = train_set$classe, p = 0.75, list = FALSE)
+training_set = new_train_set[row_numbers, ]
+validation_set = new_train_set[-row_numbers, ]
+
+```
+
+## Dataset Filtering
+
+The next step is performed for finding out the variables that affects the training model very much. So, the variables of the training dataset with zero (or) near-zero variance is found and those columns are removed from all the 3 datasets. Also, the columns that does not affect the 'classe' variable is also found and removed.
+
+```{r finding_out_necessary_variables}
+
+set.seed(3222)
+column_numbers = nearZeroVar(training_set)
+training_set_reqd = training_set[, -column_numbers]
+validation_set_reqd = validation_set[, -column_numbers]
+new_test_set = new_test_set[, -column_numbers]
+non_reqd_no = 1:6
+training_set_reqd = training_set_reqd[, -non_reqd_no]
+validation_set_reqd = validation_set_reqd[, -non_reqd_no]
+new_test_set = new_test_set[, -non_reqd_no]
+
+```
+
+The next step of omitting the rows containing the 'NA' values are removed so as to perform the training operation for the model flawlessly.
+
+```{r omitting_NA_contained_rows}
+
+training_set_reqd = na.omit(training_set_reqd)
+validation_set_reqd = na.omit(validation_set_reqd)
+new_test_set = na.omit(new_test_set)
+
+```
+
+## Model Training and Prediction
+
+This is the very important step of the machine learning process, i.e., the model training. For this process, the **"Random Forest"** method is selected for performing the training function and this step is performed by parallel computation to reduce the amount of time required for performing the operation. The trained model is then saved into a new variable which is then used for predicting the values for other dataset.  
+The next step is the step of prediction. The fitted model is now used with the predict function and in this step the predict function is used with the validation dataset to perform cross-validation analysis.  
+
+```{r training_and_prediction}
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+col_no_valid = ncol(validation_set_reqd)
+fit = train(classe ~ ., method = "rf", data = training_set_reqd, verbose = FALSE, trControl = fitControl)
+predicted_values_valid = predict(fit, newdata = validation_set_reqd[, -col_no_valid])
+fit
+plot(fit)
+
+```
+
+Now, the predicted values are checked with the values present in the validation set to find the accuracy of the trained model.  
+
+```{r confusionMatrix_check}
+
+confusionMatrix(predicted_values_valid, validation_set_reqd[, "classe"])
+
+```
+
+It is found that the accuracy of the trained model is more than 99%.  
+
+## Test Values Prediction
+
+The final step of the project of predicting the method by which the person did the excercise is found by using the trained model.  
+
+```{r predict_test_set_values}
+
+col_no_test = ncol(new_test_set)
+predicted_values_test = predict(fit, newdata = new_test_set[, -col_no_test])
+print(predicted_values_test)
+stopCluster(cluster)
+registerDoSEQ()
+
+```
+
+## Assumptions
+
+The following are the assumptions made while performing the project.  
+* The columns of the test dataset that contains more number of NA values does not affect the classe variable as those coulumns could not be used for prediction purposes.  
+* The columns of the train dataset that has zero (or) non-zero variance does not affect the train model.  
+* The first few rows of the dataset does not affect the train model as they represent information about the person performing the excercise and the time in which they perform the excercise.
+
+## Conclusion
+
+The trained model is very accurate for predicting the results and the the prediction of the test dataset proved to be exact. 
